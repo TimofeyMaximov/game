@@ -16,13 +16,15 @@ function setupGame(p1, p2) {
   p2.enemy = p1;
   p1.board = {};
   p2.board = {};
+  p1.hits = 0;
+  p2.hits = 0;
   p1.ready = false;
   p2.ready = false;
   p1.isTurn = true;
   p2.isTurn = false;
 
-  p1.send(JSON.stringify({ type: 'waitForSetup' }));
-  p2.send(JSON.stringify({ type: 'waitForSetup' }));
+  p1.send(JSON.stringify({ type: 'setup' }));
+  p2.send(JSON.stringify({ type: 'setup' }));
 }
 
 wss.on('connection', (ws) => {
@@ -49,13 +51,22 @@ wss.on('connection', (ws) => {
       }
     }
 
-    if (data.type === 'fire' && ws.isTurn) {
+    if (data.type === 'fire' && ws.isTurn && enemy) {
       const key = `${data.x},${data.y}`;
       const hit = enemy.board[key] === true;
-      if (hit) enemy.board[key] = false;
+      if (hit) {
+        enemy.board[key] = false;
+        ws.hits += 1;
+      }
 
       ws.send(JSON.stringify({ type: 'result', x: data.x, y: data.y, hit }));
       enemy.send(JSON.stringify({ type: 'incoming', x: data.x, y: data.y, hit }));
+
+      if (ws.hits >= 10) {
+        ws.send(JSON.stringify({ type: 'win' }));
+        enemy.send(JSON.stringify({ type: 'lose' }));
+        return;
+      }
 
       ws.isTurn = false;
       enemy.isTurn = true;

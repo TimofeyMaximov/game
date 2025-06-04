@@ -4,29 +4,61 @@
   <meta charset="UTF-8" />
   <title>Морской бой</title>
   <style>
-    body { font-family: sans-serif; text-align: center; }
-    .board { display: grid; grid-template-columns: repeat(10, 30px); gap: 2px; margin: 10px auto; }
-    .cell { width: 30px; height: 30px; border: 1px solid #555; line-height: 30px; text-align: center; }
-    .own.ship { background-color: gray; }
-    .own.hit { background-color: red; }
-    .own.miss { background-color: lightblue; }
-    .enemy.hit { background-color: red; }
-    .enemy.miss { background-color: lightblue; }
-    h2 { margin: 10px 0 5px; }
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      background: #f0f0f0;
+      padding: 20px;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    #status {
+      margin: 10px;
+      font-weight: bold;
+    }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(10, 30px);
+      gap: 2px;
+    }
+    .cell {
+      width: 30px;
+      height: 30px;
+      background: white;
+      border: 1px solid #999;
+      text-align: center;
+      line-height: 30px;
+      cursor: pointer;
+    }
+    .hit {
+      background: red;
+      color: white;
+    }
+    .miss {
+      background: lightblue;
+    }
+    #msg {
+      margin-top: 10px;
+      font-size: 1.2em;
+      color: green;
+    }
   </style>
 </head>
 <body>
   <h1>Морской бой</h1>
-  <p id="status">Ожидание соперника...</p>
-  <h2>Ваше поле</h2>
-  <div id="ownBoard" class="board"></div>
-  <h2>Поле противника</h2>
-  <div id="enemyBoard" class="board"></div>
+  <div id="status">Ожидание второго игрока...</div>
+  <div id="grid"></div>
+  <div id="msg"></div>
 
   <script>
-    const own = document.getElementById('ownBoard');
-    const enemy = document.getElementById('enemyBoard');
+    const grid = document.getElementById('grid');
     const status = document.getElementById('status');
+    const msg = document.getElementById('msg');
     const ws = new WebSocket(location.origin.replace(/^http/, 'ws'));
 
     let myTurn = false;
@@ -36,71 +68,68 @@
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 10; x++) {
         const cell = document.createElement('div');
-        cell.className = 'cell own';
+        cell.className = 'cell';
         cell.dataset.x = x;
         cell.dataset.y = y;
-        cell.onclick = () => {
-          if (setupDone) return;
-          cell.classList.toggle('ship');
-          const key = `${x},${y}`;
-          board[key] = cell.classList.contains('ship');
-        };
-        own.appendChild(cell);
-      }
-    }
-
-    for (let y = 0; y < 10; y++) {
-      for (let x = 0; x < 10; x++) {
-        const cell = document.createElement('div');
-        cell.className = 'cell enemy';
-        cell.dataset.x = x;
-        cell.dataset.y = y;
-        cell.onclick = () => {
-          if (!myTurn || !setupDone) return;
-          const key = `${x},${y}`;
-          if (cell.classList.contains('hit') || cell.classList.contains('miss')) return;
-          ws.send(JSON.stringify({ type: 'fire', x, y }));
-          myTurn = false;
-        };
-        enemy.appendChild(cell);
-      }
-    }
-
-    ws.onmessage = msg => {
-      const data = JSON.parse(msg.data);
-      if (data.type === 'waitForSetup') {
-        status.textContent = 'Расставьте корабли и нажмите Enter';
-        window.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && !setupDone) {
-            ws.send(JSON.stringify({ type: 'setup', board }));
-            setupDone = true;
-            status.textContent = 'Ожидание противника...';
+        cell.addEventListener('click', () => {
+          if (!setupDone) {
+            if (Object.keys(board).length < 10 && !cell.classList.contains('ship')) {
+              cell.classList.add('ship');
+              board[`${x},${y}`] = true;
+              if (Object.keys(board).length === 10) {
+                ws.send(JSON.stringify({ type: 'setup', board }));
+                setupDone = true;
+                status.textContent = 'Ожидание начала игры...';
+              }
+            }
+          } else if (myTurn && !cell.classList.contains('hit') && !cell.classList.contains('miss')) {
+            ws.send(JSON.stringify({ type: 'fire', x, y }));
+            myTurn = false;
           }
         });
+        grid.appendChild(cell);
       }
+    }
 
+    function showMsg(text, color = 'green') {
+      msg.textContent = text;
+      msg.style.color = color;
+      setTimeout(() => msg.textContent = '', 1500);
+    }
+
+    ws.onmessage = (msgEvt) => {
+      const data = JSON.parse(msgEvt.data);
       if (data.type === 'start') {
         myTurn = data.yourTurn;
-        status.textContent = myTurn ? 'Ваш ход' : 'Ход соперника';
+        status.textContent = myTurn ? 'Ваш ход' : 'Ход соперника...';
       }
-
       if (data.type === 'yourTurn') {
         myTurn = true;
         status.textContent = 'Ваш ход';
       }
-
       if (data.type === 'result') {
-        const cell = [...enemy.children].find(c => c.dataset.x == data.x && c.dataset.y == data.y);
+        const cell = [...grid.children].find(c => c.dataset.x == data.x && c.dataset.y == data.y);
         cell.classList.add(data.hit ? 'hit' : 'miss');
+        showMsg(data.hit ? 'ПОПАЛ!' : 'Мимо', data.hit ? 'green' : 'gray');
+        status.textContent = 'Ход соперника...';
       }
-
       if (data.type === 'incoming') {
-        const cell = [...own.children].find(c => c.dataset.x == data.x && c.dataset.y == data.y);
+        const cell = [...grid.children].find(c => c.dataset.x == data.x && c.dataset.y == data.y);
         cell.classList.add(data.hit ? 'hit' : 'miss');
       }
-
+      if (data.type === 'win') {
+        status.textContent = 'Вы выиграли!';
+        showMsg('ПОБЕДА!', 'darkgreen');
+      }
+      if (data.type === 'lose') {
+        status.textContent = 'Вы проиграли';
+        showMsg('Поражение', 'darkred');
+      }
       if (data.type === 'disconnect') {
         status.textContent = 'Соперник отключился';
+      }
+      if (data.type === 'setup') {
+        status.textContent = 'Расставьте 10 кораблей (кликом по клеткам)';
       }
     };
   </script>
