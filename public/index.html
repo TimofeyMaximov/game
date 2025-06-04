@@ -1,96 +1,108 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
   <meta charset="UTF-8" />
   <title>Морской бой</title>
   <style>
-    .block {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    #grid {
-      display: grid;
-      grid-template-columns: repeat(10, 30px);
-      gap: 2px;
-      margin-bottom: 20px;
-    }
-
-    .cell {
-      width: 30px;
-      height: 30px;
-      border: 1px solid black;
-      text-align: center;
-      line-height: 30px;
-    }
-
-    .ship {
-      background-color: gray;
-    }
-
-    .hit {
-      background-color: red;
-    }
-
-    .miss {
-      background-color: lightblue;
-    }
+    body { font-family: sans-serif; text-align: center; }
+    .board { display: grid; grid-template-columns: repeat(10, 30px); gap: 2px; margin: 10px auto; }
+    .cell { width: 30px; height: 30px; border: 1px solid #555; line-height: 30px; text-align: center; }
+    .own.ship { background-color: gray; }
+    .own.hit { background-color: red; }
+    .own.miss { background-color: lightblue; }
+    .enemy.hit { background-color: red; }
+    .enemy.miss { background-color: lightblue; }
+    h2 { margin: 10px 0 5px; }
   </style>
 </head>
-
 <body>
-  <section class="block">
-    <h1>Морской бой</h1>
-    <div id="status">Ожидание подключения...</div>
-    <div id="grid"></div>
-  </section>
+  <h1>Морской бой</h1>
+  <p id="status">Ожидание соперника...</p>
+  <h2>Ваше поле</h2>
+  <div id="ownBoard" class="board"></div>
+  <h2>Поле противника</h2>
+  <div id="enemyBoard" class="board"></div>
 
   <script>
+    const own = document.getElementById('ownBoard');
+    const enemy = document.getElementById('enemyBoard');
+    const status = document.getElementById('status');
     const ws = new WebSocket(location.origin.replace(/^http/, 'ws'));
-    const grid = document.getElementById("grid");
-    const status = document.getElementById("status");
+
     let myTurn = false;
+    let setupDone = false;
+    const board = {};
 
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 10; x++) {
-        const cell = document.createElement("div");
-        cell.classList.add("cell");
+        const cell = document.createElement('div');
+        cell.className = 'cell own';
         cell.dataset.x = x;
         cell.dataset.y = y;
-        cell.addEventListener("click", () => {
-          if (!myTurn) return;
-          ws.send(JSON.stringify({ type: "fire", x, y }));
-          myTurn = false;
-        });
-        grid.appendChild(cell);
+        cell.onclick = () => {
+          if (setupDone) return;
+          cell.classList.toggle('ship');
+          const key = `${x},${y}`;
+          board[key] = cell.classList.contains('ship');
+        };
+        own.appendChild(cell);
       }
     }
 
-    ws.onmessage = (msg) => {
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 10; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell enemy';
+        cell.dataset.x = x;
+        cell.dataset.y = y;
+        cell.onclick = () => {
+          if (!myTurn || !setupDone) return;
+          const key = `${x},${y}`;
+          if (cell.classList.contains('hit') || cell.classList.contains('miss')) return;
+          ws.send(JSON.stringify({ type: 'fire', x, y }));
+          myTurn = false;
+        };
+        enemy.appendChild(cell);
+      }
+    }
+
+    ws.onmessage = msg => {
       const data = JSON.parse(msg.data);
-      if (data.type === "start") {
+      if (data.type === 'waitForSetup') {
+        status.textContent = 'Расставьте корабли и нажмите Enter';
+        window.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !setupDone) {
+            ws.send(JSON.stringify({ type: 'setup', board }));
+            setupDone = true;
+            status.textContent = 'Ожидание противника...';
+          }
+        });
+      }
+
+      if (data.type === 'start') {
         myTurn = data.yourTurn;
-        status.textContent = myTurn ? "Ваш ход" : "Ход соперника";
-      } else if (data.type === "fire") {
-        const cell = grid.children[data.y * 10 + data.x];
-        const hit = Math.random() > 0.5;
-        cell.classList.add(hit ? "hit" : "miss");
-        ws.send(JSON.stringify({ type: "result", x: data.x, y: data.y, hit }));
+        status.textContent = myTurn ? 'Ваш ход' : 'Ход соперника';
+      }
+
+      if (data.type === 'yourTurn') {
         myTurn = true;
-        status.textContent = "Ваш ход";
-      } else if (data.type === "result") {
-        const cell = grid.children[data.y * 10 + data.x];
-        cell.classList.add(data.hit ? "hit" : "miss");
-        status.textContent = "Ход соперника";
-      } else if (data.type === "disconnect") {
-        status.textContent = "Соперник отключился";
-      } else if (data.type === "wait") {
-        status.textContent = "Ожидание второго игрока...";
+        status.textContent = 'Ваш ход';
+      }
+
+      if (data.type === 'result') {
+        const cell = [...enemy.children].find(c => c.dataset.x == data.x && c.dataset.y == data.y);
+        cell.classList.add(data.hit ? 'hit' : 'miss');
+      }
+
+      if (data.type === 'incoming') {
+        const cell = [...own.children].find(c => c.dataset.x == data.x && c.dataset.y == data.y);
+        cell.classList.add(data.hit ? 'hit' : 'miss');
+      }
+
+      if (data.type === 'disconnect') {
+        status.textContent = 'Соперник отключился';
       }
     };
   </script>
 </body>
-
 </html>
