@@ -35,8 +35,12 @@
     .ship {
       background: gray;
     }
-    .hit {
+    .hit-mine {
       background: red;
+      color: white;
+    }
+    .hit-enemy {
+      background: green;
       color: white;
     }
     .miss {
@@ -61,7 +65,18 @@
 
     let setupDone = false;
     let isMyTurn = false;
+    let gameOver = false;
     const board = {};
+
+    function disableGrid() {
+      grid.classList.add("disabled");
+    }
+
+    function showMsg(text, color = 'green') {
+      msg.textContent = text;
+      msg.style.color = color;
+      setTimeout(() => msg.textContent = '', 2000);
+    }
 
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 10; x++) {
@@ -72,6 +87,7 @@
         grid.appendChild(cell);
 
         cell.addEventListener('click', () => {
+          if (gameOver) return;
           if (!setupDone) {
             if (!cell.classList.contains('ship') && Object.keys(board).length < 10) {
               cell.classList.add('ship');
@@ -82,8 +98,8 @@
                 status.textContent = 'Ожидание второго игрока...';
               }
             }
-          } else if (setupDone && isMyTurn) {
-            if (!cell.classList.contains('hit') && !cell.classList.contains('miss')) {
+          } else if (isMyTurn) {
+            if (!cell.classList.contains('hit-enemy') && !cell.classList.contains('miss')) {
               ws.send(JSON.stringify({ type: 'fire', x, y }));
               isMyTurn = false;
               status.textContent = 'Ход соперника...';
@@ -93,44 +109,62 @@
       }
     }
 
-    function showMsg(text, color = 'green') {
-      msg.textContent = text;
-      msg.style.color = color;
-      setTimeout(() => msg.textContent = '', 1500);
-    }
-
     ws.onmessage = ({ data }) => {
       const msgData = JSON.parse(data);
+      const x = msgData.x;
+      const y = msgData.y;
+      const cell = [...grid.children].find(c => c.dataset.x == x && c.dataset.y == y);
+
       if (msgData.type === 'setup') {
         status.textContent = 'Расставьте 10 кораблей (по клеткам)';
       }
+
       if (msgData.type === 'start') {
         isMyTurn = msgData.yourTurn;
         status.textContent = isMyTurn ? 'Ваш ход!' : 'Ход соперника...';
       }
+
       if (msgData.type === 'yourTurn') {
         isMyTurn = true;
         status.textContent = 'Ваш ход!';
       }
+
       if (msgData.type === 'result') {
-        const cell = [...grid.children].find(c => c.dataset.x == msgData.x && c.dataset.y == msgData.y);
-        cell.classList.add(msgData.hit ? 'hit' : 'miss');
-        showMsg(msgData.hit ? 'ПОПАЛ!' : 'Мимо', msgData.hit ? 'green' : 'gray');
+        if (msgData.hit) {
+          cell.classList.add('hit-enemy');
+          showMsg('ПОПАЛ!', 'green');
+        } else {
+          cell.classList.add('miss');
+          showMsg('Мимо', 'gray');
+        }
       }
+
       if (msgData.type === 'incoming') {
-        const cell = [...grid.children].find(c => c.dataset.x == msgData.x && c.dataset.y == msgData.y);
-        cell.classList.add(msgData.hit ? 'hit' : 'miss');
+        if (msgData.hit) {
+          cell.classList.add('hit-mine');
+        } else {
+          cell.classList.add('miss');
+        }
       }
+
       if (msgData.type === 'win') {
         status.textContent = 'Вы выиграли!';
         showMsg('ПОБЕДА!', 'darkgreen');
+        gameOver = true;
+        disableGrid();
       }
+
       if (msgData.type === 'lose') {
         status.textContent = 'Вы проиграли!';
         showMsg('Поражение', 'darkred');
+        gameOver = true;
+        disableGrid();
       }
+
       if (msgData.type === 'disconnect') {
         status.textContent = 'Соперник отключился.';
+        gameOver = true;
+        disableGrid();
       }
     };
   </script>
