@@ -6,19 +6,16 @@
   <style>
     body {
       font-family: sans-serif;
+      background: #eef;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
-      min-height: 100vh;
-      background: #f0f0f0;
       padding: 20px;
     }
-    h1 {
-      margin-bottom: 10px;
-    }
-    #status {
+    h1 { margin-bottom: 10px; }
+    #status, #msg {
       margin: 10px;
+      font-size: 1.1em;
       font-weight: bold;
     }
     #grid {
@@ -29,11 +26,14 @@
     .cell {
       width: 30px;
       height: 30px;
-      background: white;
-      border: 1px solid #999;
+      border: 1px solid #888;
+      background: #fff;
       text-align: center;
       line-height: 30px;
       cursor: pointer;
+    }
+    .ship {
+      background: gray;
     }
     .hit {
       background: red;
@@ -42,16 +42,14 @@
     .miss {
       background: lightblue;
     }
-    #msg {
-      margin-top: 10px;
-      font-size: 1.2em;
-      color: green;
+    .disabled {
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
   <h1>Морской бой</h1>
-  <div id="status">Ожидание второго игрока...</div>
+  <div id="status">Ожидание подключения второго игрока...</div>
   <div id="grid"></div>
   <div id="msg"></div>
 
@@ -61,8 +59,8 @@
     const msg = document.getElementById('msg');
     const ws = new WebSocket(location.origin.replace(/^http/, 'ws'));
 
-    let myTurn = false;
     let setupDone = false;
+    let isMyTurn = false;
     const board = {};
 
     for (let y = 0; y < 10; y++) {
@@ -71,23 +69,27 @@
         cell.className = 'cell';
         cell.dataset.x = x;
         cell.dataset.y = y;
+        grid.appendChild(cell);
+
         cell.addEventListener('click', () => {
           if (!setupDone) {
-            if (Object.keys(board).length < 10 && !cell.classList.contains('ship')) {
+            if (!cell.classList.contains('ship') && Object.keys(board).length < 10) {
               cell.classList.add('ship');
               board[`${x},${y}`] = true;
               if (Object.keys(board).length === 10) {
                 ws.send(JSON.stringify({ type: 'setup', board }));
                 setupDone = true;
-                status.textContent = 'Ожидание начала игры...';
+                status.textContent = 'Ожидание второго игрока...';
               }
             }
-          } else if (myTurn && !cell.classList.contains('hit') && !cell.classList.contains('miss')) {
-            ws.send(JSON.stringify({ type: 'fire', x, y }));
-            myTurn = false;
+          } else if (setupDone && isMyTurn) {
+            if (!cell.classList.contains('hit') && !cell.classList.contains('miss')) {
+              ws.send(JSON.stringify({ type: 'fire', x, y }));
+              isMyTurn = false;
+              status.textContent = 'Ход соперника...';
+            }
           }
         });
-        grid.appendChild(cell);
       }
     }
 
@@ -97,39 +99,38 @@
       setTimeout(() => msg.textContent = '', 1500);
     }
 
-    ws.onmessage = (msgEvt) => {
-      const data = JSON.parse(msgEvt.data);
-      if (data.type === 'start') {
-        myTurn = data.yourTurn;
-        status.textContent = myTurn ? 'Ваш ход' : 'Ход соперника...';
+    ws.onmessage = ({ data }) => {
+      const msgData = JSON.parse(data);
+      if (msgData.type === 'setup') {
+        status.textContent = 'Расставьте 10 кораблей (по клеткам)';
       }
-      if (data.type === 'yourTurn') {
-        myTurn = true;
-        status.textContent = 'Ваш ход';
+      if (msgData.type === 'start') {
+        isMyTurn = msgData.yourTurn;
+        status.textContent = isMyTurn ? 'Ваш ход!' : 'Ход соперника...';
       }
-      if (data.type === 'result') {
-        const cell = [...grid.children].find(c => c.dataset.x == data.x && c.dataset.y == data.y);
-        cell.classList.add(data.hit ? 'hit' : 'miss');
-        showMsg(data.hit ? 'ПОПАЛ!' : 'Мимо', data.hit ? 'green' : 'gray');
-        status.textContent = 'Ход соперника...';
+      if (msgData.type === 'yourTurn') {
+        isMyTurn = true;
+        status.textContent = 'Ваш ход!';
       }
-      if (data.type === 'incoming') {
-        const cell = [...grid.children].find(c => c.dataset.x == data.x && c.dataset.y == data.y);
-        cell.classList.add(data.hit ? 'hit' : 'miss');
+      if (msgData.type === 'result') {
+        const cell = [...grid.children].find(c => c.dataset.x == msgData.x && c.dataset.y == msgData.y);
+        cell.classList.add(msgData.hit ? 'hit' : 'miss');
+        showMsg(msgData.hit ? 'ПОПАЛ!' : 'Мимо', msgData.hit ? 'green' : 'gray');
       }
-      if (data.type === 'win') {
+      if (msgData.type === 'incoming') {
+        const cell = [...grid.children].find(c => c.dataset.x == msgData.x && c.dataset.y == msgData.y);
+        cell.classList.add(msgData.hit ? 'hit' : 'miss');
+      }
+      if (msgData.type === 'win') {
         status.textContent = 'Вы выиграли!';
         showMsg('ПОБЕДА!', 'darkgreen');
       }
-      if (data.type === 'lose') {
-        status.textContent = 'Вы проиграли';
+      if (msgData.type === 'lose') {
+        status.textContent = 'Вы проиграли!';
         showMsg('Поражение', 'darkred');
       }
-      if (data.type === 'disconnect') {
-        status.textContent = 'Соперник отключился';
-      }
-      if (data.type === 'setup') {
-        status.textContent = 'Расставьте 10 кораблей (кликом по клеткам)';
+      if (msgData.type === 'disconnect') {
+        status.textContent = 'Соперник отключился.';
       }
     };
   </script>
