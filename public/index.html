@@ -33,18 +33,18 @@
       cursor: pointer;
     }
     .ship {
-      background: gray;
+      background: gray !important;
     }
     .hit-mine {
-      background: red;
+      background: red !important;
       color: white;
     }
     .hit-enemy {
-      background: green;
+      background: green !important;
       color: white;
     }
     .miss {
-      background: lightblue;
+      background: lightblue !important;
     }
     .disabled {
       pointer-events: none;
@@ -135,7 +135,6 @@
           showMsg('ПОПАЛ!', 'green');
         } else {
           cell.classList.add('miss');
-          showMsg('Мимо', 'gray');
         }
       }
 
@@ -143,7 +142,9 @@
         if (msgData.hit) {
           cell.classList.add('hit-mine');
         } else {
-          cell.classList.add('miss');
+          if (!cell.classList.contains('ship')) {
+            cell.classList.add('miss');
+          }
         }
       }
 
