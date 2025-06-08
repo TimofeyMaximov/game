@@ -9,7 +9,8 @@ const hits = [[], []];
 
 const server = http.createServer((req, res) => {
     // Простая раздача клиентской части
-    let filePath = './client' + (req.url === '/' ? '/index.html' : req.url);
+    let filePath = path.join(__dirname, '../client', req.url === '/' ? 'index.html' : req.url);
+
     const ext = path.extname(filePath);
     const contentType = {
         '.html': 'text/html',
