@@ -3,9 +3,9 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const clients = [];
-const boards = [null, null];
-const hits = [[], []];
+let clients = [];
+let boards = [null, null];
+let hits = [[], []];
 
 const server = http.createServer((req, res) => {
     let filePath = path.join(__dirname, '../client', req.url === '/' ? 'index.html' : req.url);
@@ -63,7 +63,7 @@ wss.on('connection', (ws) => {
             hits[playerId].push({ x, y });
 
             ws.send(JSON.stringify({ type: 'result', x, y, hit: isHit }));
-            clients[enemyId].send(JSON.stringify({ type: 'incoming', x, y, hit: isHit }));
+            clients[enemyId]?.send(JSON.stringify({ type: 'incoming', x, y, hit: isHit }));
 
             const totalHits = hits[playerId].filter(h => enemyBoard[h.y][h.x] === 1).length;
             const totalShipCells = enemyBoard.flat().filter(cell => cell === 1).length;
@@ -76,9 +76,12 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        clients[playerId] = null;
-        boards[playerId] = null;
-        hits[playerId] = [];
+        // Закрываем обоих, если один ушёл
+        clients.forEach(client => client?.close());
+        clients = [];
+        boards = [null, null];
+        hits = [[], []];
+        console.log("Один из игроков отключился. Игра сброшена.");
     });
 });
 
