@@ -2,6 +2,9 @@ body {
     font-family: Arial, sans-serif;
     background: #eef;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .board {
